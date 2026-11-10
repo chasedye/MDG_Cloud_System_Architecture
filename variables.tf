@@ -1,21 +1,35 @@
 
-# Write iam wrole for lambda
-
-variable "front_end_bucket" {
-    description = "S3 bucket to hold compiled code for cloudfront distribution"
-    type = "string"
+variable "region" {
+    description = "AWS MDG Region"
+    type        = "string"
+    default     = "us-east-1"
 }
 
-variable "upload_video_bucket" {
-    description = "S3 bucket for uploaded and unprocessed videos"
-    type = "string"
+#   Website
+
+variable "mdg_cloudfront_policy" {
+    type        = "string"
+    default     = "mdg_cloudfront_s3_access_iam"
 }
 
-variable "processed_video_bucket" { 
-    description = "S3 bucket for processed videos"
-    type = "string"
+variable "mdg_s3_frontend" {
+    type        = "string"
+    default     = "mdg_front_end_s3_bucket"
 }
 
-variable "mdg_cloudfront" {
-    description = "Cloudfront"
+variable "mdg_cloudfront_dist" {
+    type        = "string"
+    default     = "mdg_cloudfront_distribution"
+}
+
+#   Video Upload Process
+
+variable "mdg_s3_upload" {
+    type        = "string"
+    default     = "mdg_s3_video_upload_bucket"
+}
+
+variable "mdg_s3_processed" { 
+    type        = "string"
+    default     = "mdg_s3_proccesed_video_bucket"
 }
