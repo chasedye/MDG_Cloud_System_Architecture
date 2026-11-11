@@ -1,35 +1,40 @@
 
 variable "region" {
     description = "AWS MDG Region"
-    type        = "string"
+    type        = string
     default     = "us-east-1"
 }
 
 #   Website
 
 variable "mdg_cloudfront_policy" {
-    type        = "string"
+    type        = string
     default     = "mdg_cloudfront_s3_access_iam"
 }
 
 variable "mdg_s3_frontend" {
-    type        = "string"
+    type        = string
     default     = "mdg_front_end_s3_bucket"
 }
 
+variable "frontend_root_object" {
+    type        = string
+    default     = "index.html"
+}
 variable "mdg_cloudfront_dist" {
-    type        = "string"
+    type        = string
     default     = "mdg_cloudfront_distribution"
 }
 
 #   Video Upload Process
 
 variable "mdg_s3_upload" {
-    type        = "string"
+    type        = string
     default     = "mdg_s3_video_upload_bucket"
 }
 
 variable "mdg_s3_processed" { 
-    type        = "string"
+    type        = string
     default     = "mdg_s3_proccesed_video_bucket"
 }
+
