@@ -19,6 +19,32 @@ resource "aws_s3_bucket" "upload_s3_bucket" {
     }
 }
 
+resource "aws_s3_bucket_public_access_block" "upload_s3_bucket" {
+  bucket = aws_s3_bucket.upload_s3_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "upload_s3_bucket" {
+  bucket = aws_s3_bucket.upload_s3_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "AES256"
+    }
+  }
+}
+
+
+resource "aws_s3_bucket_versioning" "upload_s3_bucket" {
+  bucket = aws_s3_bucket.upload_s3_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
 
 resource "aws_s3_bucket" "processed_s3_bucket" {
     bucket = "${var.mdg_s3_processed}"
@@ -26,6 +52,129 @@ resource "aws_s3_bucket" "processed_s3_bucket" {
         Name    = "ProcessedVideoBucket"
     }
 }
+
+#################################################
+#   API Gateway
+
+resource "aws_api_gateway_rest_api" "api" {
+  name = "${var.prefix}-api"
+  description = "API Gateway for MDG"
+}
+
+resource "aws_api_gateway_resource" "resource" {
+    rest_api_id = aws_api_gateway_rest_api.api.id
+    parent_id = aws_api_gateway_rest_api.api.root_resource_id
+    path_part = "invoke"
+}
+
+resource "aws_api_gateway_method" "method" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_rest_api.api.resource.id
+  http_method = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "integration" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.resource.id
+  http_method             = aws_api_gateway_method.method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${var.region}:lambda:path/2015-03-31/functions/${aws_lambda_function.generate_presigned_url.arn}/invocations"
+}
+
+
+#################################################
+#   Lambda
+
+resource "aws_iam_role" "lambda_run_role" {
+  name = "${var.lambda_run_role}-lambda-execution-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        },
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "signed_upload_lambda_policy" {
+  name   = "${var.prefix}-signed-upload-lambda-policy"
+  role   = aws_iam_role.lambda_run_role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket"
+        ],
+        Resource = [
+          aws_s3_bucket.upload_s3_bucket.arn,
+          "${aws_s3_bucket.upload_s3_bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+
+resource "aws_lambda_function" "gen_signed_upload_lambda" {
+  function_name = "${var.prefix}-generate-presigned-url-upload"
+  role          = "${aws_iam_role.lambda_run_role.arn}"
+  runtime = "python3.14"
+  memory_size   = 1024
+  timeout       = 30
+  environment {
+    variables = {
+      BUCKET_NAME = aws_s3_bucket.upload_s3_bucket.bucket
+    }
+  }
+}
+
+
+resource "aws_lambda_function" "init_vid_processing_lambda" {
+  function_name = var.init_vid_processing_lambda
+  role          = "${aws_iam_role.lambda_run_role.arn}"
+  runtime = "python3.14"
+
+  environment {
+    variables = {
+     
+    }
+  }
+}
+
+
+resource "aws_lambda_function" "gen_signed_stream_lambda" {
+  function_name = var.gen_video_stream_signed_lambda
+  role          = "${aws_iam_role.lambda_run_role.arn}"
+  runtime = "python3.14"
+
+  environment {
+    variables = {
+     
+    }
+  }
+}
+
+
 
 #################################################
 #   Cloudfront
@@ -69,7 +218,6 @@ locals {
 }
 
 data "aws_acm_certificate" "mdg_domain" {
-  region    = var.region
   domain    = "*.${local.domain}"
   statuses  = [ "ISSUED" ]
 }
