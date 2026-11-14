@@ -61,15 +61,16 @@ resource "aws_api_gateway_rest_api" "api" {
   description = "API Gateway for MDG"
 }
 
+# Signed upload video url  
 resource "aws_api_gateway_resource" "upload-resource" {
     rest_api_id = aws_api_gateway_rest_api.api.id
     parent_id = aws_api_gateway_rest_api.api.root_resource_id
     path_part = "invoke"
 }
 
-resource "aws_api_gateway_method" "method" {
+resource "aws_api_gateway_method" "upload-method" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_rest_api.api.upload-resource.id
+  resource_id = aws_api_gateway_resource.upload-resource.id
   http_method = "POST"
   authorization = "NONE"
 }
@@ -77,7 +78,7 @@ resource "aws_api_gateway_method" "method" {
 resource "aws_api_gateway_integration" "upload-integration" {
   rest_api_id             = aws_api_gateway_rest_api.api.id
   resource_id             = aws_api_gateway_resource.upload-resource.id
-  http_method             = aws_api_gateway_method.method.http_method
+  http_method             = aws_api_gateway_method.upload-method.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = "arn:aws:apigateway:${var.region}:lambda:path/2015-03-31/functions/${aws_lambda_function.gen-signed-upload-lambda.arn}/invocations"
@@ -91,10 +92,49 @@ resource "aws_lambda_permission" "allow-gateway-upload-lambda" {
   source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
 }
 
-resource "aws_api_gateway_deployment" "deployment" {
+resource "aws_api_gateway_deployment" "upload-deployment" {
   depends_on  = [aws_api_gateway_integration.upload-integration]
   rest_api_id = aws_api_gateway_rest_api.api.id
 }
+
+
+# Signed stream video url
+resource "aws_api_gateway_resource" "stream-resource" {
+    rest_api_id = aws_api_gateway_rest_api.api.id
+    parent_id = aws_api_gateway_rest_api.api.root_resource_id
+    path_part = "invoke"
+}
+
+resource "aws_api_gateway_method" "stream-method" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.stream-resource.id
+  http_method = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "stream-integration" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.stream-resource.id
+  http_method             = aws_api_gateway_method.stream-method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${var.region}:lambda:path/2015-03-31/functions/${aws_lambda_function.gen-signed-stream-lambda.arn}/invocations"
+}
+
+resource "aws_lambda_permission" "allow-gateway-stream-lambda" {
+  statement_id  = "${lower(var.prefix)}-allow-api-gateway-invoke-stream-lambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.gen-signed-stream-lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_deployment" "stream-deployment" {
+  depends_on  = [aws_api_gateway_integration.stream-integration]
+  rest_api_id = aws_api_gateway_rest_api.api.id
+}
+
+# 
 
 
 output "api_url" {
@@ -207,8 +247,15 @@ resource "aws_iam_role_policy" "signed-stream-lambda-policy" {
 ############################################################
 #     Lambda
 
+data "archive_file" "example-py-zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../Lambda/sample.py"
+  output_path = "${path.module}/../Lambda/sample.zip"
+}
+
 resource "aws_lambda_function" "gen-signed-upload-lambda" {
   function_name = "${var.prefix}-generate-signed-upload"
+  filename = "../Lambda/sample.zip"
   role          = aws_iam_role.signed-upload-lambda-role.arn
   runtime = "python3.14"
   memory_size   = 1024
@@ -223,6 +270,7 @@ resource "aws_lambda_function" "gen-signed-upload-lambda" {
 # Pass unprocessed videos to media convert Lambda
 resource "aws_lambda_function" "init-vid-processing-lambda" {
   function_name = var.init-vid-processing-lambda
+  filename = "../Lambda/sample.zip"
   role          = aws_iam_role
   runtime = "python3.14"
 
@@ -236,6 +284,7 @@ resource "aws_lambda_function" "init-vid-processing-lambda" {
 
 resource "aws_lambda_function" "gen-signed-stream-lambda" {
   function_name = "${var.prefix}-gen-signed-stream-lambda"
+  filename = "../Lambda/sample.zip"
   role          = "${aws_iam_role.lambda_run_role.arn}"
   runtime = "python3.14"
 
@@ -367,3 +416,8 @@ resource "aws_route53_record" "mdg-cloudfront" {
     evaluate_target_health  = false
   }
 }
+
+
+########################################################
+#   Elemental Media Convert
+
