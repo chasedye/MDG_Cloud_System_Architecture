@@ -7,23 +7,23 @@ variable "region" {
 
 #   Website
 
-variable "mdg_cloudfront_policy" {
+variable "mdg-cloudfront-policy" {
     type        = string
-    default     = "mdg_cloudfront_s3_access_iam"
+    default     = "mdg-cloudfront-s3-access-iam"
 }
 
-variable "mdg_s3_frontend" {
+variable "mdg-s3-frontend" {
     type        = string
-    default     = "mdg_front_end_s3_bucket"
+    default     = "mdg-front-end-s3-bucket"
 }
 
-variable "frontend_root_object" {
+variable "frontend-root-object" {
     type        = string
     default     = "index.html"
 }
-variable "mdg_cloudfront_dist" {
+variable "mdg-cloudfront-dist" {
     type        = string
-    default     = "mdg_cloudfront_distribution"
+    default     = "mdg-cloudfront-distribution"
 }
 
 #   Video Upload Process
@@ -33,32 +33,32 @@ variable "prefix" {
     type = string
     default = "mdg"
 }
-variable "init_vid_processing_lambda" {
+variable "init-vid-processing-lambda" {
     type = string
-    default = "mdg_init_video_processing_lambda"
+    default = "mdg-init-video-processing-lambda"
 }
 
-variable "gen_video_upload_signed_lambda" {
+variable "gen-video-upload-signed-lambda" {
     type = string   
-    default = "mdg_gen_video_upload_signed_lambda"
+    default = "mdg-gen-video-upload-signed-lambda"
 }
 
-variable "gen_video_stream_signed_lambda" {
+variable "gen-video-stream-signed-lambda" {
     type = string
-    default = "mdg_gen_video_stream_signed_lambda"
+    default = "mdg-gen-video-stream-signed-lambda"
 }
 
-variable "lambda_run_role" {
+variable "lambda-run-role" {
     type = string
-    default = "lambda_run_role"
+    default = "lambda-run-role"
 }
-variable "mdg_s3_upload" {
+variable "mdg-s3-upload" {
     type        = string
-    default     = "mdg_s3_video_upload_bucket"
+    default     = "mdg-s3-video-upload-bucket"
 }
 
-variable "mdg_s3_processed" { 
+variable "mdg-s3-processed" { 
     type        = string
-    default     = "mdg_s3_proccesed_video_bucket"
+    default     = "mdg-s3-proccesed-video-bucket"
 }
 
