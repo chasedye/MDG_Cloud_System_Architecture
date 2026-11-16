@@ -7,6 +7,10 @@ variable "region" {
 
 #   Website
 
+variable "mdg-domain-name" {
+    type =  string
+    default = "mdgOpenMat"
+}
 variable "mdg-cloudfront-policy" {
     type        = string
     default     = "mdg-cloudfront-s3-access-iam"
@@ -62,3 +66,15 @@ variable "mdg-s3-processed" {
     default     = "mdg-s3-proccesed-video-bucket"
 }
 
+##################################
+# Media Convert
+
+variable "pricing-plan" {
+    type       = string
+    default = "ON_DEMAND"
+} 
+
+variable "media-convert-description" {
+    type = string
+    default = "Media Convert Queue for mdg video processing"
+}

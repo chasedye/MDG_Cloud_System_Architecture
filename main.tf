@@ -1,5 +1,5 @@
 provider "aws" {
-  region = var.region
+  region = "${var.region}"
 }
 
 ############################################
@@ -46,11 +46,40 @@ resource "aws_s3_bucket_versioning" "upload-s3-bucket" {
   }
 }
 
+resource "aws_s3_bucket_notification" "upload_notification" {
+  bucket = aws_s3_bucket.upload-s3-bucket.id
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.init-vid-processing-lambda.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "InitProcessingLogs/"
+    filter_suffix       = ".log"
+  }
+
+  depends_on = [ aws_lambda_permission.allow-init-lambda-from-upload-bucket ]
+}
+
+
+
+
+
 resource "aws_s3_bucket" "processed-s3-bucket" {
     bucket = "${var.mdg-s3-processed}"
     tags = {
         Name    = "ProcessedVideoBucket"
     }
+}
+
+resource "aws_s3_bucket_cors_configuration" "cors-config" {
+  bucket = aws_s3_bucket.processed-s3-bucket.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
 }
 
 #################################################
@@ -247,36 +276,17 @@ resource "aws_iam_role_policy" "signed-stream-lambda-policy" {
 ############################################################
 #     Lambda
 
-data "archive_file" "example-py-zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../Lambda/sample.py"
-  output_path = "${path.module}/../Lambda/sample.zip"
-}
-
 resource "aws_lambda_function" "gen-signed-upload-lambda" {
   function_name = "${var.prefix}-generate-signed-upload"
   filename = "../Lambda/sample.zip"
   role          = aws_iam_role.signed-upload-lambda-role.arn
-  runtime = "python3.14"
+  runtime = "python3.13"
+  handler = "sample.lambda_handler"
   memory_size   = 1024
   timeout       = 30
   environment {
     variables = {
-      BUCKET_NAME = aws_s3_bucket.upload-s3-bucket.bucket
-    }
-  }
-}
-
-# Pass unprocessed videos to media convert Lambda
-resource "aws_lambda_function" "init-vid-processing-lambda" {
-  function_name = var.init-vid-processing-lambda
-  filename = "../Lambda/sample.zip"
-  role          = aws_iam_role
-  runtime = "python3.14"
-
-  environment {
-    variables = {
-     
+      DestinationBucket = aws_s3_bucket.upload-s3-bucket.bucket
     }
   }
 }
@@ -285,9 +295,9 @@ resource "aws_lambda_function" "init-vid-processing-lambda" {
 resource "aws_lambda_function" "gen-signed-stream-lambda" {
   function_name = "${var.prefix}-gen-signed-stream-lambda"
   filename = "../Lambda/sample.zip"
-  role          = "${aws_iam_role.lambda_run_role.arn}"
-  runtime = "python3.14"
-
+  role          = "${aws_iam_role.signed-stream-lambda-role.arn}"
+  runtime = "python3.13"
+  handler = "sample.lambda_handler"
   environment {
      variables = {
       BUCKET_NAME = aws_s3_bucket.processed-s3-bucket.bucket
@@ -317,7 +327,7 @@ data "aws_iam_policy_document" "origin-bucket-policy" {
     ]
 
     resources = [
-      "${aws_s3_bucket.frontend-s3-bucket}/*",
+      "${aws_s3_bucket.frontend-s3-bucket.arn}/*",
     ]
 
     condition {
@@ -329,18 +339,17 @@ data "aws_iam_policy_document" "origin-bucket-policy" {
 }
 
 resource "aws_s3_bucket_policy" "fe-s3-policy-cf" {
-  bucket = aws_s3_bucket.frontend-s3-bucket
+  bucket = aws_s3_bucket.frontend-s3-bucket.id
   policy = data.aws_iam_policy_document.origin-bucket-policy.json
 }
 
 locals {
   s3-origin-id  = "mdg_s3_origin"
-  domain        = "mdgOpenMat.com"
 }
 
-data "aws_acm_certificate" "mdg-domain" {
-  domain    = "*.${local.domain}"
-  statuses  = [ "ISSUED" ]
+resource "aws_acm_certificate" "mdg-domain" {
+  domain_name    = "www.${var.mdg-domain-name}.com"
+  validation_method = "DNS"
 }
 
 resource "aws_cloudfront_origin_access_control" "default" {
@@ -361,7 +370,7 @@ resource "aws_cloudfront_distribution" "mdg-s3-dist" {
   is_ipv6_enabled     = true
   default_root_object = "${var.frontend-root-object}"
 
-  aliases             = "www.${local.domain}"
+  aliases             = ["www.${var.mdg-domain-name}.com"]
 
    default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -394,19 +403,19 @@ resource "aws_cloudfront_distribution" "mdg-s3-dist" {
   }
 
   viewer_certificate {
-    acm_certificate_arn = data.aws_acm_certificate.domain.arn
+    acm_certificate_arn = aws_acm_certificate.mdg-domain.arn
     ssl_support_method  = "sni-only"
   }
 }
 
 # Route 53 records for cloudfront distribution aliases
-data "aws_route53_zone" "mdg-domain" {
-  name = local.domain
+resource "aws_route53_zone" "mdg-domain" {
+  name = var.mdg-domain-name
 }
 
 resource "aws_route53_record" "mdg-cloudfront" {
   for_each  = aws_cloudfront_distribution.mdg-s3-dist.aliases
-  zone_id   = data.aws_route53_zone.mdg-domain.zone_id
+  zone_id   = aws_route53_zone.mdg-domain.zone_id
   name      = each.value
   type      = "A"
 
@@ -421,3 +430,152 @@ resource "aws_route53_record" "mdg-cloudfront" {
 ########################################################
 #   Elemental Media Convert
 
+resource "aws_media_convert_queue" "queue" {
+    name   =  "${var.prefix}-media-convert-queue"
+    pricing_plan = var.pricing-plan
+    description = var.media-convert-description
+}
+
+resource "aws_iam_role" "media-convert-role" {
+  name = "${var.prefix}-media-convert-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "mediaconvert.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+
+resource "aws_iam_role_policy" "media-convert-role-policy" {
+  name   = "${var.prefix}-media-convert-policy"
+  role   = aws_iam_role.media-convert-role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          #"s3:PutObject", probably dont need
+          "s3:GetObject",
+          "s3:ListBucket"
+        ],
+        Resource = [
+          aws_s3_bucket.upload-s3-bucket.arn,
+          "${aws_s3_bucket.upload-s3-bucket.arn}/*"
+        ]
+      },
+       {
+        Effect = "Allow",
+        Action = [
+          "s3:PutObject",
+          #"s3:GetObject", Probably dont need
+          "s3:ListBucket"
+        ],
+        Resource = [
+          aws_s3_bucket.processed-s3-bucket.arn,
+          "${aws_s3_bucket.processed-s3-bucket.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+# Lambda for automatic processing
+
+resource "aws_iam_role" "init-media-convert-lambda-role" {
+  name = "${var.prefix}-init-media-convert-lambda-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        },
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+
+resource "aws_iam_role_policy" "init-media-convert-lambda-policy" {
+  name   = "${var.prefix}-init-media-convert-lambda-policy"
+  role   = aws_iam_role.init-media-convert-lambda-role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        sid = "PassRole",
+        Action = [
+          "iam:PassRole"
+        ],
+        Resource = [
+          aws_iam_role.media-convert-role.arn,
+          "${aws_iam_role.media-convert-role.arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow",
+        sid = "MediaConvertService"
+        Action = [
+          "mediaconvert:*"
+        ],
+        Reources = [
+          "*"
+        ]
+      }
+    ]
+  })
+}
+
+
+resource "aws_lambda_function" "init-vid-processing-lambda" {
+  function_name = var.init-vid-processing-lambda
+  filename = "../Lambda/sample.zip"
+  role          = aws_iam_role.init-media-convert-lambda-role.id
+  runtime = "python3.13"
+  handler = "sample.lambda_handler"
+  environment {
+    variables = {
+        SourceBucket = "${aws_s3_bucket.upload-s3-bucket.bucket}"
+        DestinationBucket = "${aws_s3_bucket.processed-s3-bucket.bucket}"
+        MediaConvertRole = "${aws_iam_role.media-convert-role.arn}"
+        Application = "VOD"
+    }
+  }
+}
+
+resource "aws_lambda_permission" "allow-init-lambda-from-upload-bucket" {
+  statement_id  = "AllowExecutionFromS3Bucket1"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.init-vid-processing-lambda.arn
+  principal     = "s3.amazonaws.com"
+  source_arn    = aws_s3_bucket.upload-s3-bucket.arn
+}
