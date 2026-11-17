@@ -1,4 +1,5 @@
 provider "aws" {
+  alias = "region"
   region = "${var.region}"
 }
 
@@ -589,7 +590,6 @@ resource "aws_iam_role" "init-media-convert-lambda-role" {
   })
 }
 
-
 resource "aws_iam_role_policy" "init-media-convert-lambda-policy" {
   name   = "${var.prefix}-init-media-convert-lambda-policy"
   role   = aws_iam_role.init-media-convert-lambda-role.id
@@ -607,22 +607,21 @@ resource "aws_iam_role_policy" "init-media-convert-lambda-policy" {
       },
       {
         Effect = "Allow",
-        sid = "PassRole",
+        Sid = "PassRole",
         Action = [
           "iam:PassRole"
         ],
         Resource = [
-          aws_iam_role.media-convert-role.arn,
-          "${aws_iam_role.media-convert-role.arn}/*"
+          aws_iam_role.media-convert-role.arn
         ]
       },
       {
         Effect = "Allow",
-        sid = "MediaConvertService"
+        Sid = "MediaConvertService",
         Action = [
           "mediaconvert:*"
         ],
-        Reources = [
+        Resource = [
           "*"
         ]
       }
@@ -632,9 +631,9 @@ resource "aws_iam_role_policy" "init-media-convert-lambda-policy" {
 
 
 resource "aws_lambda_function" "init-vid-processing-lambda" {
-  function_name = var.init-vid-processing-lambda
-  filename = "../Lambda/sample.zip"
-  role          = aws_iam_role.init-media-convert-lambda-role.id
+  function_name = "${var.prefix}-init-vid-process-lambda"
+  filename = "Lambda/sample.zip"
+  role          = aws_iam_role.init-media-convert-lambda-role.arn
   runtime = "python3.13"
   handler = "sample.lambda_handler"
   environment {
