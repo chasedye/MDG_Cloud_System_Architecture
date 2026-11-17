@@ -94,7 +94,7 @@ resource "aws_api_gateway_rest_api" "api" {
 resource "aws_api_gateway_resource" "upload-resource" {
     rest_api_id = aws_api_gateway_rest_api.api.id
     parent_id = aws_api_gateway_rest_api.api.root_resource_id
-    path_part = "invoke"
+    path_part = "upload"
 }
 
 resource "aws_api_gateway_method" "upload-method" {
@@ -278,7 +278,7 @@ resource "aws_iam_role_policy" "signed-stream-lambda-policy" {
 
 resource "aws_lambda_function" "gen-signed-upload-lambda" {
   function_name = "${var.prefix}-generate-signed-upload"
-  filename = "../Lambda/sample.zip"
+  filename = "Lambda/sample.zip"
   role          = aws_iam_role.signed-upload-lambda-role.arn
   runtime = "python3.13"
   handler = "sample.lambda_handler"
@@ -294,7 +294,7 @@ resource "aws_lambda_function" "gen-signed-upload-lambda" {
 
 resource "aws_lambda_function" "gen-signed-stream-lambda" {
   function_name = "${var.prefix}-gen-signed-stream-lambda"
-  filename = "../Lambda/sample.zip"
+  filename = "Lambda/sample.zip"
   role          = "${aws_iam_role.signed-stream-lambda-role.arn}"
   runtime = "python3.13"
   handler = "sample.lambda_handler"
