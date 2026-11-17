@@ -334,8 +334,7 @@ data "aws_iam_policy_document" "origin-bucket-policy" {
     }
 
     actions = [
-      "s3:GetObject",
-      "s3:PutObject",
+      "s3:GetObject"
     ]
 
     resources = [
@@ -359,9 +358,67 @@ locals {
   s3-origin-id  = "mdg_s3_origin"
 }
 
-resource "aws_acm_certificate" "mdg-domain" {
-  domain_name    = "www.${var.mdg-domain-name}.com"
+resource "aws_acm_certificate" "cert" {
+  domain_name    = "${var.mdg-domain-name}.com"
+  subject_alternative_names = ["${var.mdg-domain-name}.com"]
   validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Route 53 records for cloudfront distribution aliases
+resource "aws_route53_zone" "zone" {
+  name = "${var.mdg-domain-name}.com"
+}
+
+resource "aws_route53_record" "mdg-record" {
+
+  name            = tolist(aws_acm_certificate.cert.domain_validation_options)[0].resource_record_name
+  records         = [tolist(aws_acm_certificate.cert.domain_validation_options)[0].resource_record_value]
+  type            = tolist(aws_acm_certificate.cert.domain_validation_options)[0].resource_record_type
+  zone_id         = aws_route53_zone.zone.zone_id
+  ttl             = 60
+
+  #for_each = {
+  #  for dvo in aws_acm_certificate.cert.domain_validation_options :
+  #  dvo.domain_name => {
+  #    name   = dvo.resource_record_name
+  #    record = dvo.resource_record_value
+  #    type   = dvo.resource_record_type
+  #  }
+  #}
+#
+  allow_overwrite = true
+#
+  #name    = each.value.name
+  #records = [each.value.record]
+  #ttl     = 60
+  #type    = each.value.type
+#
+  #zone_id = aws_route53_zone.zone.zone_id
+
+
+  #zone_id   = aws_route53_zone.zone.zone_id
+  #name      = each.value
+  #ttl       = 60
+  #type      = "A"
+
+  #alias {
+  #  name                    = aws_cloudfront_distribution.mdg-s3-dist.domain_name
+  #  zone_id                 = aws_cloudfront_distribution.mdg-s3-dist.hosted_zone_id
+  #  evaluate_target_health  = false
+  #}
+}
+
+output "zone_name_servers" {
+  value = aws_route53_zone.zone.name_servers
+}
+
+resource "aws_acm_certificate_validation" "cert-validation" {
+  certificate_arn         = aws_acm_certificate.cert.arn
+  validation_record_fqdns = [aws_route53_record.mdg-record.fqdn]
 }
 
 resource "aws_cloudfront_origin_access_control" "default" {
@@ -382,7 +439,7 @@ resource "aws_cloudfront_distribution" "mdg-s3-dist" {
   is_ipv6_enabled     = true
   default_root_object = "${var.frontend-root-object}"
 
-  aliases             = ["www.${var.mdg-domain-name}.com"]
+  aliases             = ["${var.mdg-domain-name}.com", "www.${var.mdg-domain-name}.com"]
 
    default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -397,7 +454,7 @@ resource "aws_cloudfront_distribution" "mdg-s3-dist" {
       }
     }
     
-    viewer_protocol_policy = "allow-all"
+    viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
     default_ttl            = 3600
     max_ttl                = 86400
@@ -415,29 +472,35 @@ resource "aws_cloudfront_distribution" "mdg-s3-dist" {
   }
 
   viewer_certificate {
-    acm_certificate_arn = aws_acm_certificate.mdg-domain.arn
+    acm_certificate_arn = aws_acm_certificate_validation.cert-validation.certificate_arn
     ssl_support_method  = "sni-only"
+    minimum_protocol_version = "${var.minTLS}"
   }
 }
 
-# Route 53 records for cloudfront distribution aliases
-resource "aws_route53_zone" "mdg-domain" {
-  name = var.mdg-domain-name
-}
-
-resource "aws_route53_record" "mdg-cloudfront" {
-  for_each  = aws_cloudfront_distribution.mdg-s3-dist.aliases
-  zone_id   = aws_route53_zone.mdg-domain.zone_id
-  name      = each.value
-  type      = "A"
+resource "aws_route53_record" "cloudfront_alias" {
+  zone_id = aws_route53_zone.zone.zone_id
+  name    = "www.${var.mdg-domain-name}.com"
+  type    = "A"
 
   alias {
-    name                    = aws_cloudfront_distribution.mdg-s3-dist.domain_name
-    zone_id                 = aws_cloudfront_distribution.mdg-s3-dist.hosted_zone_id
-    evaluate_target_health  = false
+    name                   = aws_cloudfront_distribution.mdg-s3-dist.domain_name
+    zone_id                = aws_cloudfront_distribution.mdg-s3-dist.hosted_zone_id
+    evaluate_target_health = false
   }
 }
 
+resource "aws_route53_record" "cloudfront_alias_ipv6" {
+  zone_id = aws_route53_zone.zone.zone_id
+  name    = "www.${var.mdg-domain-name}.com"
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.mdg-s3-dist.domain_name
+    zone_id                = aws_cloudfront_distribution.mdg-s3-dist.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
 
 ########################################################
 #   Elemental Media Convert
