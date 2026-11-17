@@ -126,12 +126,18 @@ resource "aws_api_gateway_deployment" "upload-deployment" {
   rest_api_id = aws_api_gateway_rest_api.api.id
 }
 
+resource "aws_api_gateway_stage" "upload-stage" {
+  deployment_id = aws_api_gateway_deployment.upload-deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  stage_name    = "${var.prefix}-upload-stage"
+}
+
 
 # Signed stream video url
 resource "aws_api_gateway_resource" "stream-resource" {
     rest_api_id = aws_api_gateway_rest_api.api.id
     parent_id = aws_api_gateway_rest_api.api.root_resource_id
-    path_part = "invoke"
+    path_part = "stream"
 }
 
 resource "aws_api_gateway_method" "stream-method" {
@@ -161,6 +167,12 @@ resource "aws_lambda_permission" "allow-gateway-stream-lambda" {
 resource "aws_api_gateway_deployment" "stream-deployment" {
   depends_on  = [aws_api_gateway_integration.stream-integration]
   rest_api_id = aws_api_gateway_rest_api.api.id
+}
+
+resource "aws_api_gateway_stage" "stream-stage" {
+  deployment_id = aws_api_gateway_deployment.stream-deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  stage_name    = "${var.prefix}-stream-stage"
 }
 
 # 
