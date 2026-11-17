@@ -16,6 +16,11 @@ variable "mdg-cloudfront-policy" {
     default     = "mdg-cloudfront-s3-access-iam"
 }
 
+variable "minTLS" {
+    type        =   string
+    default = "TLSv1.2_2021"
+}
+
 variable "mdg-s3-frontend" {
     type        = string
     default     = "mdg-front-end-s3-bucket"
