@@ -380,7 +380,7 @@ resource "aws_route53_record" "mdg-record" {
   records         = [tolist(aws_acm_certificate.cert.domain_validation_options)[0].resource_record_value]
   type            = tolist(aws_acm_certificate.cert.domain_validation_options)[0].resource_record_type
   zone_id         = aws_route53_zone.zone.zone_id
-  ttl             = 60
+  ttl             = 300
 
   #for_each = {
   #  for dvo in aws_acm_certificate.cert.domain_validation_options :
@@ -440,7 +440,7 @@ resource "aws_cloudfront_distribution" "mdg-s3-dist" {
   is_ipv6_enabled     = true
   default_root_object = "${var.frontend-root-object}"
 
-  aliases             = ["${var.mdg-domain-name}.com", "www.${var.mdg-domain-name}.com"]
+  aliases             = ["${var.mdg-domain-name}.com"]
 
    default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]

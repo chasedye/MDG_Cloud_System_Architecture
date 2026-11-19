@@ -9,7 +9,7 @@ variable "region" {
 
 variable "mdg-domain-name" {
     type =  string
-    default = "mdgOpenMat"
+    default = "mdgopenmat"
 }
 variable "mdg-cloudfront-policy" {
     type        = string
