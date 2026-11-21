@@ -53,13 +53,13 @@ resource "aws_s3_bucket_notification" "upload_notification" {
   lambda_function {
     lambda_function_arn = aws_lambda_function.init-vid-processing-lambda.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "InitProcessingLogs/"
-    filter_suffix       = ".log"
   }
 
   depends_on = [ aws_lambda_permission.allow-init-lambda-from-upload-bucket ]
 }
 
+resource "aws_s3_bucket_notification" "upload_notification" {
+  bucket = aws_s3_bucket.upload-s3-bucket.id
 
 
 
@@ -176,9 +176,6 @@ resource "aws_api_gateway_stage" "stream-stage" {
   stage_name    = "${var.prefix}-stream-stage"
 }
 
-# 
-
-
 output "api_url" {
   description = "The URL of the API Gateway REST API"
   value       = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${var.region}.amazonaws.com/dev/invoke"
@@ -223,7 +220,6 @@ resource "aws_iam_role_policy" "signed_upload_lambda_policy" {
         Effect = "Allow",
         Action = [
           "s3:PutObject",
-          #"s3:GetObject",     may need but probably dont
           "s3:ListBucket"
         ],
         Resource = [
@@ -381,36 +377,7 @@ resource "aws_route53_record" "mdg-record" {
   type            = tolist(aws_acm_certificate.cert.domain_validation_options)[0].resource_record_type
   zone_id         = aws_route53_zone.zone.zone_id
   ttl             = 300
-
-  #for_each = {
-  #  for dvo in aws_acm_certificate.cert.domain_validation_options :
-  #  dvo.domain_name => {
-  #    name   = dvo.resource_record_name
-  #    record = dvo.resource_record_value
-  #    type   = dvo.resource_record_type
-  #  }
-  #}
-#
   allow_overwrite = true
-#
-  #name    = each.value.name
-  #records = [each.value.record]
-  #ttl     = 60
-  #type    = each.value.type
-#
-  #zone_id = aws_route53_zone.zone.zone_id
-
-
-  #zone_id   = aws_route53_zone.zone.zone_id
-  #name      = each.value
-  #ttl       = 60
-  #type      = "A"
-
-  #alias {
-  #  name                    = aws_cloudfront_distribution.mdg-s3-dist.domain_name
-  #  zone_id                 = aws_cloudfront_distribution.mdg-s3-dist.hosted_zone_id
-  #  evaluate_target_health  = false
-  #}
 }
 
 output "zone_name_servers" {
@@ -547,7 +514,6 @@ resource "aws_iam_role_policy" "media-convert-role-policy" {
       {
         Effect = "Allow",
         Action = [
-          #"s3:PutObject", probably dont need
           "s3:GetObject",
           "s3:ListBucket"
         ],
@@ -560,7 +526,6 @@ resource "aws_iam_role_policy" "media-convert-role-policy" {
         Effect = "Allow",
         Action = [
           "s3:PutObject",
-          #"s3:GetObject", Probably dont need
           "s3:ListBucket"
         ],
         Resource = [
@@ -585,8 +550,7 @@ resource "aws_iam_role" "init-media-convert-lambda-role" {
           Service = "lambda.amazonaws.com"
         },
         Action = "sts:AssumeRole"
-      }
-    ]
+      }]
   })
 }
 
@@ -613,16 +577,37 @@ resource "aws_iam_role_policy" "init-media-convert-lambda-policy" {
         ],
         Resource = [
           aws_iam_role.media-convert-role.arn
-        ]
+        ],
+        "Condition": {
+          "StringEquals": { "iam:PassedToService": "mediaconvert.amazonaws.com" }
+        }
       },
       {
         Effect = "Allow",
         Sid = "MediaConvertService",
         Action = [
-          "mediaconvert:*"
+          "mediaconvert:CreateJob",
+          "mediaconvert:GetJob",
+          "mediaconvert:DescribeEndpoints"
         ],
         Resource = [
           "*"
+        ]
+      },
+      {
+        Sid = "ReadUploads",
+        Effect = "Allow",
+        Action = "s3:GetObject",
+        Resource = "arn:aws:s3:::mdg-s3-video-upload-bucket/*"
+      },
+      {
+        Sid = "ListUploads",
+        Effect = "Allow",
+        Action = [
+          "s3:ListBucket"
+        ],
+        Resource = [
+          "${aws_s3_bucket.upload-s3-bucket.arn}",
         ]
       }
     ]
@@ -630,17 +615,19 @@ resource "aws_iam_role_policy" "init-media-convert-lambda-policy" {
 }
 
 
+
 resource "aws_lambda_function" "init-vid-processing-lambda" {
   function_name = "${var.prefix}-init-vid-process-lambda"
-  filename = "Lambda/sample.zip"
+  filename = "${var.local-init-lambda-zip-path}"
   role          = aws_iam_role.init-media-convert-lambda-role.arn
   runtime = "python3.13"
-  handler = "sample.lambda_handler"
+  handler = "init-vid-process.lambda_handler"
   environment {
     variables = {
-        SourceBucket = "${aws_s3_bucket.upload-s3-bucket.bucket}"
         DestinationBucket = "${aws_s3_bucket.processed-s3-bucket.bucket}"
         MediaConvertRole = "${aws_iam_role.media-convert-role.arn}"
+        MediaConvertQueue = "${aws_media_convert_queue.queue.arn}"
+        LAMBDA_REGION  = "${var.region}"    
         Application = "VOD"
     }
   }

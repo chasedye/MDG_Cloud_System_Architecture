@@ -47,6 +47,11 @@ variable "init-vid-processing-lambda" {
     default = "mdg-init-video-processing-lambda"
 }
 
+variable "local-init-lambda-zip-path" {
+    type = string
+    default = "../Lambda/InitVidProcessLambda.zip"
+}
+
 variable "gen-video-upload-signed-lambda" {
     type = string   
     default = "mdg-gen-video-upload-signed-lambda"
