@@ -58,6 +58,8 @@ resource "aws_s3_bucket_notification" "upload_notification" {
   depends_on = [ aws_lambda_permission.allow-init-lambda-from-upload-bucket ]
 }
 
+resource "aws_s3_bucket_notification" "upload_notification" {
+  bucket = aws_s3_bucket.upload-s3-bucket.id
 
 
 
